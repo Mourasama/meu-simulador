@@ -102,366 +102,259 @@ def search_tickers(query: str):
         pass
     return []
 
-# --- Gerenciamento de Autenticação e Carteiras ---
+# --- Gerenciamento de Autenticação ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_email = None
 
-st.sidebar.title("Login / Conta")
-if not st.session_state.logged_in:
-    tab_login, tab_register = st.sidebar.tabs(["Login", "Cadastrar"])
-    with tab_login:
-        email_login = st.text_input("E-mail", key="email_login")
-        pass_login = st.text_input("Senha", type="password", key="pass_login")
-        if st.button("Entrar", key="btn_login"):
-            try:
-                resp = requests.post(f"{BACKEND_URL}/auth/login", json={"email": email_login, "password": pass_login}, timeout=5)
-                if resp.status_code == 200:
-                    st.session_state.logged_in = True
-                    st.session_state.user_email = email_login
-                    # Limpa estados para forçar recarregamento do DB
-                    if 'portfolios' in st.session_state: del st.session_state['portfolios']
-                    st.session_state.current_portfolio = "Principal"
-                    st.session_state.assets = None
-                    st.rerun()
-                else:
-                    st.sidebar.error("E-mail ou senha incorretos.")
-            except Exception:
-                st.sidebar.error("Erro de conexão ao backend.")
-    with tab_register:
-        email_reg = st.text_input("E-mail", key="email_reg")
-        pass_reg = st.text_input("Senha", type="password", key="pass_reg")
-        if st.button("Cadastrar", key="btn_register"):
-            try:
-                resp = requests.post(f"{BACKEND_URL}/auth/register", json={"email": email_reg, "password": pass_reg}, timeout=5)
-                if resp.status_code == 200:
-                    st.sidebar.success("Conta criada! Pode logar.")
-                else:
-                    st.sidebar.error("O E-mail já está em uso ou é inválido.")
-            except Exception:
-                st.sidebar.error("Erro de conexão ao backend.")
-    st.sidebar.info("Modo Teste: os dados não são salvos sem login.")
-    st.sidebar.divider()
-else:
-    st.sidebar.success(f"Logado: {st.session_state.user_email}")
-    if st.sidebar.button("Sair"):
-        st.session_state.logged_in = False
-        st.session_state.user_email = None
-        if 'portfolios' in st.session_state: del st.session_state['portfolios']
-        st.session_state.current_portfolio = "Principal"
-        st.session_state.assets = None
-        st.rerun()
-    st.sidebar.divider()
-
 if 'portfolios' not in st.session_state:
-    if st.session_state.logged_in:
-        try:
-            resp = requests.get(f"{BACKEND_URL}/db/portfolios", params={"user_email": st.session_state.user_email}, timeout=3)
-            if resp.status_code == 200:
-                st.session_state.portfolios = resp.json().get("portfolios", ["Principal"])
-            else:
-                st.session_state.portfolios = ["Principal"]
-        except Exception:
-            st.session_state.portfolios = ["Principal"]
-    else:
-        st.session_state.portfolios = ["Principal"]
+    st.session_state.portfolios = ["Principal"]
 
 if 'current_portfolio' not in st.session_state:
     st.session_state.current_portfolio = st.session_state.portfolios[0]
 
-# Sidebar: Seleção de Carteira
-st.sidebar.title("Carteiras")
-novo_nome_carteira = st.sidebar.text_input("Criar nova carteira", placeholder="Nome da nova carteira...")
-if st.sidebar.button("Criar") and novo_nome_carteira:
-    if novo_nome_carteira not in st.session_state.portfolios:
-        st.session_state.portfolios.append(novo_nome_carteira)
-        st.session_state.current_portfolio = novo_nome_carteira
-        # Forçar recarregamento para a nova carteira
-        st.session_state.assets = None
+if 'assets' not in st.session_state:
+    st.session_state.assets = []
+    st.session_state.db_ids = []
+
+# --- Diálogos (Pop-ups) ---
+
+@st.dialog("Login / Conta")
+def auth_dialog():
+    if not st.session_state.logged_in:
+        tab_login, tab_register = st.tabs(["Login", "Cadastrar"])
+        with tab_login:
+            email_login = st.text_input("E-mail", key="dl_email_login")
+            pass_login = st.text_input("Senha", type="password", key="dl_pass_login")
+            if st.button("Entrar", key="dl_btn_login", kind="primary", use_container_width=True):
+                try:
+                    resp = requests.post(f"{BACKEND_URL}/auth/login", json={"email": email_login, "password": pass_login}, timeout=5)
+                    if resp.status_code == 200:
+                        st.session_state.logged_in = True
+                        st.session_state.user_email = email_login
+                        if 'portfolios' in st.session_state: del st.session_state['portfolios']
+                        st.session_state.assets = None
+                        st.rerun()
+                    else:
+                        st.error("E-mail ou senha incorretos.")
+                except Exception:
+                    st.error("Erro de conexão ao backend.")
+        with tab_register:
+            email_reg = st.text_input("E-mail", key="dl_email_reg")
+            pass_reg = st.text_input("Senha", type="password", key="dl_pass_reg")
+            if st.button("Cadastrar", key="dl_btn_register", use_container_width=True):
+                try:
+                    resp = requests.post(f"{BACKEND_URL}/auth/register", json={"email": email_reg, "password": pass_reg}, timeout=5)
+                    if resp.status_code == 200:
+                        st.success("Conta criada! Pode logar.")
+                    else:
+                        st.error("O E-mail já está em uso.")
+                except Exception:
+                    st.error("Erro de conexão ao backend.")
+    else:
+        st.write(f"Conectado como: **{st.session_state.user_email}**")
+        if st.button("Sair da Conta", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.user_email = None
+            if 'portfolios' in st.session_state: del st.session_state['portfolios']
+            st.session_state.assets = None
+            st.rerun()
+
+@st.dialog("Adicionar Novo Ativo")
+def add_asset_dialog():
+    tipo_opcoes = {"Ação": "stock", "Cripto": "crypto", "Renda Fixa": "fixed_income"}
+    asset_type = st.selectbox("Tipo de Ativo", list(tipo_opcoes.keys()))
+    type_key = tipo_opcoes[asset_type]
+    
+    novo_ativo = None
+
+    if type_key == "stock":
+        query = st.text_input("Buscar Ticker (ex: PETR4, AAPL)", key="dl_stock_q")
+        ticker = ""
+        if len(query) >= 2:
+            sugs = search_tickers(query)
+            if sugs:
+                opcoes = {f"{s['symbol']} - {s['name']}": s['symbol'] for s in sugs}
+                sel = st.selectbox("Sugestões:", list(opcoes.keys()))
+                ticker = opcoes[sel]
+            else:
+                ticker = query.upper()
+        
+        qty = st.number_input("Quantidade", min_value=0.01, value=1.0)
+        price = st.number_input("Preço de Compra (R$)", min_value=0.0, value=0.0)
+        dt = st.date_input("Data Compra", value=date.today()).strftime("%Y-%m-%d")
+        
+        if st.button("Adicionar", use_container_width=True, kind="primary"):
+            if ticker:
+                novo_ativo = {"type":"stock", "ticker":ticker, "quantity":qty, "purchase_price":price, "purchase_date":dt}
+
+    elif type_key == "crypto":
+        query = st.text_input("Buscar Cripto (ex: Bitcoin, ETH)", key="dl_crypto_q")
+        ticker = ""
+        if len(query) >= 2:
+            sugs = search_tickers(query)
+            criptos = [s for s in sugs if s.get('type') == 'CRYPTOCURRENCY']
+            if criptos:
+                opcoes = {f"{s['name']} ({s['symbol']})": s for s in criptos}
+                sel = st.selectbox("Sugestões:", list(opcoes.keys()))
+                ticker = opcoes[sel].get('id') or opcoes[sel].get('symbol')
+            else:
+                ticker = query.upper()
+        
+        qty = st.number_input("Quantidade", min_value=0.0001, value=0.1, format="%.4f")
+        price = st.number_input("Preço de Compra (USD)", min_value=0.0, value=0.0)
+        
+        if st.button("Adicionar", use_container_width=True, kind="primary"):
+            if ticker:
+                if "/" not in ticker and len(ticker) < 6: ticker = f"{ticker.upper()}/USDT"
+                novo_ativo = {"type":"crypto", "ticker":ticker, "quantity":qty, "purchase_price":price}
+
+    elif type_key == "fixed_income":
+        name = st.text_input("Nome do Ativo", placeholder="Tesouro Selic...")
+        subtipo = st.selectbox("Subtipo", ["CDI", "PRE", "IPCA+"])
+        rate = st.number_input("Taxa (ex: 1.1 = 110% CDI)", value=1.1)
+        cap = st.number_input("Capital Inicial", min_value=0.0, value=1000.0)
+        dt = st.date_input("Data Compra", value=date.today()).strftime("%Y-%m-%d")
+        mat = st.date_input("Vencimento", value=date(2029,1,1)).strftime("%Y-%m-%d")
+        
+        if st.button("Adicionar", use_container_width=True, kind="primary"):
+            if name:
+                novo_ativo = {
+                    "type": "fixed_income", "ticker": name, "quantity": 1.0, 
+                    "purchase_price": cap, "purchase_date": dt,
+                    "fixed_income_rate": rate, "fixed_income_maturity": mat, "fixed_income_type": subtipo
+                }
+
+    if novo_ativo:
+        process_new_asset(novo_ativo)
         st.rerun()
 
-selected_portfolio = st.sidebar.selectbox(
-    "Carteira Ativa", 
-    st.session_state.portfolios, 
-    index=st.session_state.portfolios.index(st.session_state.current_portfolio) if st.session_state.current_portfolio in st.session_state.portfolios else 0
-)
-
-# Se a carteira mudou, recarregar os ativos
-if selected_portfolio != st.session_state.current_portfolio or 'assets' not in st.session_state or st.session_state.assets is None:
-    st.session_state.current_portfolio = selected_portfolio
-    if st.session_state.logged_in:
-        try:
-            resp = requests.get(f"{BACKEND_URL}/db/portfolio", params={"name": selected_portfolio, "user_email": st.session_state.user_email}, timeout=3)
-            if resp.status_code == 200:
-                st.session_state.assets = resp.json()
-                st.session_state.db_ids = [a.get('id') for a in st.session_state.assets]
-            else:
-                st.session_state.assets = []
-                st.session_state.db_ids = []
-        except Exception:
-            st.session_state.assets = []
-            st.session_state.db_ids = []
+@st.dialog("Gerenciar Carteira")
+def manage_dialog():
+    st.subheader(f"Ativos em '{st.session_state.current_portfolio}'")
+    if not st.session_state.assets:
+        st.info("Nenhum ativo para gerenciar.")
     else:
-        st.session_state.assets = []
-        st.session_state.db_ids = []
-
-st.sidebar.divider()
-
-# --- Sidebar: Adicionar Ativo ---
-st.sidebar.header(f"Adicionar Ativo em '{st.session_state.current_portfolio}'")
-tipo_opcoes = {
-    "Ação": "stock",
-    "Cripto": "crypto",
-    "Renda Fixa": "fixed_income",
-}
-tipo_label_sel = st.sidebar.selectbox("Tipo de Ativo", list(tipo_opcoes.keys()))
-asset_type = tipo_opcoes[tipo_label_sel]
-
-novo_ativo = None
-
-# ── AÇÃO ──────────────────────────────────────────────────────────────────────
-if asset_type == "stock":
-    st.sidebar.markdown("**Buscar Ação / ETF**")
-    ticker_query = st.sidebar.text_input(
-        "Digite o ticker ou nome",
-        key="stock_query",
-        placeholder="ex: PETR4, Vale, AAPL..."
-    )
-
-    ticker_selecionado = ""
-    if ticker_query and len(ticker_query) >= 2:
-        with st.sidebar:
-            with st.spinner("Buscando..."):
-                sugestoes = search_tickers(ticker_query)
-        
-        if sugestoes:
-            # Filtrar por EQUITY ou mostrar tudo se for busca genérica
-            opcoes = {f"{s['symbol']} — {s['name']} ({s.get('exchange', 'Stock')})": s['symbol'] for s in sugestoes}
-            escolha = st.sidebar.selectbox("Resultados encontrados:", list(opcoes.keys()), key="stock_sel")
-            ticker_selecionado = opcoes[escolha]
-            st.sidebar.caption(f"Ticker selecionado: **{ticker_selecionado}**")
-        else:
-            ticker_selecionado = ticker_query.upper()
-
-    qty = st.sidebar.number_input("Quantidade", min_value=0.01, value=1.0, step=1.0, key="stock_qty")
-    purchase_price = st.sidebar.number_input(
-        "Preço de Compra (R$)",
-        min_value=0.0, value=0.0, step=0.01, key="stock_pp",
-    )
-    purchase_date_stock = st.sidebar.date_input(
-        "Data de Compra", value=date.today(), key="stock_date"
-    ).strftime("%Y-%m-%d")
-
-    if st.sidebar.button("Adicionar Ação", key="btn_stock"):
-        if not ticker_selecionado:
-            st.sidebar.error("Selecione um ticker válido.")
-        else:
-            novo_ativo = {
-                "type": "stock",
-                "ticker": ticker_selecionado,
-                "quantity": qty,
-                "purchase_price": purchase_price,
-                "purchase_date": purchase_date_stock,
-            }
-
-# ── CRIPTO ────────────────────────────────────────────────────────────────────
-elif asset_type == "crypto":
-    st.sidebar.markdown("**Buscar Cripto**")
-    crypto_query = st.sidebar.text_input(
-        "Digite o nome ou símbolo",
-        key="crypto_query",
-        placeholder="ex: Bitcoin, Ethereum, SOL..."
-    )
-
-    selected_crypto_id = ""
-    crypto_ticker = ""
+        for i, a in enumerate(st.session_state.assets):
+            col1, col2 = st.columns([4, 1])
+            col1.write(f"**{a.get('ticker')}** | Qtd: {a.get('quantity')}")
+            if col2.button("🗑️", key=f"dl_del_{i}"):
+                remove_asset_logic(i, a)
+                st.rerun()
     
-    if crypto_query and len(crypto_query) >= 2:
-        with st.sidebar:
-            with st.spinner("Buscando..."):
-                sugestoes = search_tickers(crypto_query)
-        
-        # Filtrar sugestões do CoinGecko ou que sejam CRYPTOCURRENCY
-        cripto_sugestoes = [s for s in sugestoes if s.get('type') == 'CRYPTOCURRENCY']
-        
-        if cripto_sugestoes:
-            # Mostra o Nome e Símbolo
-            opcoes = {f"{s['name']} ({s['symbol']})": s for s in cripto_sugestoes}
-            escolha_label = st.sidebar.selectbox("Selecione a cripto:", list(opcoes.keys()), key="crypto_sel")
-            selected_data = opcoes[escolha_label]
-            
-            # Priorizamos o Símbolo para o ticker principal (melhor para fallbacks)
-            # Mas guardamos o ID se disponível para o CoinGecko search no backend.
-            crypto_ticker = selected_data.get('symbol', '').upper()
-            selected_crypto_id = selected_data.get('id', '').lower()
-            
-            # Formatação visual
-            st.sidebar.caption(f"Selecionado: **{selected_data['name']}**")
-        else:
-            crypto_ticker = crypto_query.upper()
+    st.divider()
+    if st.button("Limpar Todos os Ativos", use_container_width=True):
+        clear_portfolio_logic()
+        st.rerun()
+    if st.button("Apagar Esta Carteira", use_container_width=True, kind="secondary"):
+        delete_portfolio_logic()
+        st.rerun()
 
-    qty = st.sidebar.number_input("Quantidade", min_value=0.0001, value=0.01, step=0.001, format="%.4f", key="crypto_qty")
-    purchase_price = st.sidebar.number_input(
-        "Preço de Compra (USD)", min_value=0.0, value=0.0, step=0.01, key="crypto_pp"
-    )
+# --- Lógica de Persistência (Refatorada) ---
 
-    if st.sidebar.button("Adicionar Cripto", key="btn_crypto"):
-        final_ticker = selected_crypto_id if selected_crypto_id else crypto_ticker
-        if not final_ticker:
-            st.sidebar.error("Informe uma cripto válida.")
-        else:
-            # Se for par manual sem ID, garantir formato /USDT
-            if "/" not in final_ticker and not selected_crypto_id:
-                 final_ticker = f"{final_ticker}/USDT"
-
-            novo_ativo = {
-                "type": "crypto",
-                "ticker": final_ticker,
-                "quantity": qty,
-                "purchase_price": purchase_price,
-            }
-
-# ── RENDA FIXA ────────────────────────────────────────────────────────────────
-elif asset_type == "fixed_income":
-    st.sidebar.markdown("**Renda Fixa**")
-    st.sidebar.caption(
-        "O Valor Atual é calculado automaticamente: "
-        "**Capital Inicial × (1 + taxa)^(dias corridos)**"
-    )
-    name = st.sidebar.text_input("Nome (ex: Tesouro Selic 2029)", key="fi_name")
-    fi_type = st.sidebar.selectbox("Subtipo", ["CDI", "PRE", "IPCA+"], key="fi_type")
-
-    if fi_type == "CDI":
-        rate = st.sidebar.number_input(
-            "% do CDI (ex: 1.10 = 110% CDI)", value=1.10, step=0.01, format="%.2f", key="fi_rate",
-            help="Percentual do CDI contratado. 1.0 = 100% CDI, 1.10 = 110% CDI."
-        )
-    elif fi_type == "PRE":
-        rate = st.sidebar.number_input(
-            "Taxa Pré-fixada (ex: 0.12 = 12% a.a.)", value=0.12, step=0.005, format="%.4f", key="fi_rate",
-            help="Taxa anual pré-fixada como decimal."
-        )
-    else:  # IPCA+
-        rate = st.sidebar.number_input(
-            "Spread Real sobre IPCA (ex: 0.06 = IPCA + 6%)", value=0.06, step=0.005, format="%.4f", key="fi_rate",
-            help="Spread real acima do IPCA como decimal."
-        )
-
-    maturity = st.sidebar.date_input(
-        "Data de Vencimento", value=date(2029, 3, 1), key="fi_maturity"
-    ).strftime("%Y-%m-%d")
-
-    capital_inicial = st.sidebar.number_input(
-        "Capital Inicial (R$)",
-        min_value=0.01, value=1000.0, step=100.0, key="fi_capital",
-        help="Valor total investido. O sistema calcula os juros acumulados desde a data de compra.",
-    )
-    purchase_date_fi = st.sidebar.date_input(
-        "Data de Compra (para cálculo pro-rata)",
-        value=date.today() - timedelta(days=365),
-        key="fi_date",
-    ).strftime("%Y-%m-%d")
-
-    if st.sidebar.button("Adicionar Renda Fixa", key="btn_fi"):
-        if not name:
-            st.sidebar.error("Informe um nome para o ativo.")
-        else:
-            novo_ativo = {
-                "type": "fixed_income",
-                "ticker": name,
-                "quantity": 1.0,           # RF usa capital_inicial como valor total
-                "purchase_price": capital_inicial,  # capital_inicial = purchase_price × qty(1)
-                "purchase_date": purchase_date_fi,
-                "fixed_income_rate": rate,
-                "fixed_income_maturity": maturity,
-                "fixed_income_type": fi_type,
-            }
-
-# Processar novo ativo
-if novo_ativo:
+def process_new_asset(novo_ativo):
     try:
-        payload = {
-            "portfolio_name": st.session_state.current_portfolio,
-            "user_email": st.session_state.user_email,
-            "asset": novo_ativo
-        }
-        # Se não logado, apenas adicionamos ao session state para teste
+        payload = {"portfolio_name": st.session_state.current_portfolio, "user_email": st.session_state.user_email, "asset": novo_ativo}
         if not st.session_state.logged_in:
             st.session_state.assets.append(novo_ativo)
             st.session_state.db_ids.append(None)
-            st.success("Ativo adicionado (Modo Teste - Não será salvo)")
-            st.rerun()
         else:
-            save_resp = requests.post(f"{BACKEND_URL}/db/asset", json=payload, timeout=5)
-            if save_resp.status_code == 200:
-                saved_id = save_resp.json().get("id")
-                novo_ativo["id"] = saved_id
+            resp = requests.post(f"{BACKEND_URL}/db/asset", json=payload, timeout=5)
+            if resp.status_code == 200:
                 st.session_state.assets.append(novo_ativo)
-                st.session_state.db_ids.append(saved_id)
-                st.success("Ativo adicionado e salvo!")
-                st.rerun()
-            else:
-                st.sidebar.error(f"Erro ao salvar ativo: {save_resp.text}")
     except Exception as e:
-        st.sidebar.error(f"Erro de conexão: {e}")
+        st.error(f"Erro ao salvar: {e}")
 
-# --- Carteira Atual na Sidebar ---
-st.sidebar.divider()
-st.sidebar.subheader("Carteira Atual")
-if st.session_state.assets:
-    for i, a in enumerate(st.session_state.assets):
-        col_a, col_b = st.sidebar.columns([3, 1])
-        col_a.write(f"**{a.get('ticker', '?')}** ({tipo_label(a.get('type', ''))})")
-        col_a.caption(f"Qtd: {a.get('quantity', 0)} | Compra: {fmt_brl(a.get('purchase_price', 0))}")
-        if col_b.button("🗑️", key=f"del_{i}"):
-            if st.session_state.logged_in:
-                asset_id = a.get("id") or (st.session_state.db_ids[i] if i < len(st.session_state.db_ids) else None)
-                if asset_id:
-                    requests.delete(f"{BACKEND_URL}/db/asset/{asset_id}", params={"user_email": st.session_state.user_email}, timeout=3)
-            st.session_state.assets.pop(i)
-            if i < len(st.session_state.db_ids):
-                st.session_state.db_ids.pop(i)
+def remove_asset_logic(index, asset):
+    if st.session_state.logged_in:
+        asset_id = asset.get("id") or (st.session_state.db_ids[index] if index < len(st.session_state.db_ids) else None)
+        if asset_id:
+            requests.delete(f"{BACKEND_URL}/db/asset/{asset_id}", params={"user_email": st.session_state.user_email}, timeout=3)
+    st.session_state.assets.pop(index)
+    if index < len(st.session_state.db_ids): st.session_state.db_ids.pop(index)
+
+def clear_portfolio_logic():
+    if st.session_state.logged_in:
+        requests.delete(f"{BACKEND_URL}/db/portfolio", params={"name": st.session_state.current_portfolio, "user_email": st.session_state.user_email}, timeout=3)
+    st.session_state.assets = []
+    st.session_state.db_ids = []
+
+def delete_portfolio_logic():
+    clear_portfolio_logic()
+    if st.session_state.current_portfolio in st.session_state.portfolios:
+        st.session_state.portfolios.remove(st.session_state.current_portfolio)
+    st.session_state.current_portfolio = st.session_state.portfolios[0] if st.session_state.portfolios else "Principal"
+    st.session_state.assets = None
+
+# --- Carregamento de Dados ---
+if st.session_state.logged_in and ('portfolios' not in st.session_state or len(st.session_state.portfolios) <= 1):
+    try:
+        resp = requests.get(f"{BACKEND_URL}/db/portfolios", params={"user_email": st.session_state.user_email}, timeout=3)
+        if resp.status_code == 200:
+            st.session_state.portfolios = resp.json().get("portfolios", ["Principal"])
+    except Exception: pass
+
+if st.session_state.assets is None:
+    if st.session_state.logged_in:
+        try:
+            resp = requests.get(f"{BACKEND_URL}/db/portfolio", params={"name": st.session_state.current_portfolio, "user_email": st.session_state.user_email}, timeout=3)
+            if resp.status_code == 200:
+                st.session_state.assets = resp.json()
+                st.session_state.db_ids = [a.get('id') for a in st.session_state.assets]
+        except Exception:
+            st.session_state.assets = []
+    else:
+        st.session_state.assets = []
+
+# --- Barra Lateral (Simplificada) ---
+with st.sidebar:
+    st.title("💰 Simulador")
+    st.divider()
+    st.markdown("""
+    ### Sobre Mim
+    **Enzo Moura de Souza**  
+    *CPA-20 / C-PRO R*
+    
+    [🔗 LinkedIn](https://www.linkedin.com/in/enzo-moura-de-souza-7751512a2)
+    """)
+    st.divider()
+    if st.session_state.logged_in:
+        st.success(f"Logado: {st.session_state.user_email}")
+    else:
+        st.info("Modo Teste (dados não salvos)")
+
+# --- Cabeçalho Principal (Botões e Seleção) ---
+row1_col1, row1_col2 = st.columns([3, 1])
+
+with row1_col1:
+    st.title("Simulador de Carteira")
+    c1, c2, c3, c4 = st.columns(4)
+    if c1.button("➕ Novo Ativo", use_container_width=True):
+        add_asset_dialog()
+    if c2.button("⚙️ Gerenciar", use_container_width=True):
+        manage_dialog()
+    if c3.button("👤 Conta", use_container_width=True):
+        auth_dialog()
+    novo_p = st.text_input("", placeholder="Nova Carteira...", label_visibility="collapsed")
+    if novo_p:
+        if novo_p not in st.session_state.portfolios:
+            st.session_state.portfolios.append(novo_p)
+            st.session_state.current_portfolio = novo_p
+            st.session_state.assets = None
             st.rerun()
 
-    col_btn1, col_btn2 = st.sidebar.columns(2)
-    if col_btn1.button("Limpar Ativos"):
-        if st.session_state.logged_in:
-            requests.delete(f"{BACKEND_URL}/db/portfolio", params={"name": st.session_state.current_portfolio, "user_email": st.session_state.user_email}, timeout=3)
-        st.session_state.assets = []
-        st.session_state.db_ids = []
-        st.rerun()
-    if col_btn2.button("Apagar Carteira"):
-        if st.session_state.logged_in:
-            requests.delete(f"{BACKEND_URL}/db/portfolio", params={"name": st.session_state.current_portfolio, "user_email": st.session_state.user_email}, timeout=3)
-        if st.session_state.current_portfolio in st.session_state.portfolios:
-            st.session_state.portfolios.remove(st.session_state.current_portfolio)
-        st.session_state.current_portfolio = st.session_state.portfolios[0] if st.session_state.portfolios else "Principal"
+with row1_col2:
+    st.write("") # Espaçamento
+    st.write("")
+    selected_portfolio = st.selectbox(
+        "Carteira Ativa", 
+        st.session_state.portfolios, 
+        index=st.session_state.portfolios.index(st.session_state.current_portfolio) if st.session_state.current_portfolio in st.session_state.portfolios else 0
+    )
+    if selected_portfolio != st.session_state.current_portfolio:
+        st.session_state.current_portfolio = selected_portfolio
         st.session_state.assets = None
         st.rerun()
-else:
-    st.sidebar.info("Nenhum ativo na carteira.")
-
-# --- Título Principal e Sobre Mim ---
-col_head1, col_head2 = st.columns([2, 1])
-
-with col_head1:
-    st.title("Simulador de Carteira Financeira")
-
-with col_head2:
-    st.markdown("""
-    <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1);">
-        <h4 style="margin-top: 0; color: #2196F3;">Sobre Mim</h4>
-        <p style="font-size: 0.9rem; margin-bottom: 8px;">
-            Sou <b>Enzo Moura de Souza</b>, Profissional certificado <b>CPA-20/C-PRO R</b>.
-        </p>
-        <p style="font-size: 0.85rem; color: #ccc; margin-bottom: 12px;">
-            Desenvolvi este site para estudar programação e ajudar profissionais de mercado a testarem suas ideias.
-        </p>
-        <a href="https://www.linkedin.com/in/enzo-moura-de-souza-7751512a2" target="_blank" style="color: #2196F3; text-decoration: none; font-weight: 600;">
-            🔗 Meu LinkedIn
-        </a>
-    </div>
-    """, unsafe_allow_html=True)
 
 # Tabs
 tab1, tab2, tab4 = st.tabs(["Dashboard", "Simulação de Cenários", "Comparar Carteiras"])
@@ -470,7 +363,7 @@ tab1, tab2, tab4 = st.tabs(["Dashboard", "Simulação de Cenários", "Comparar C
 with tab1:
     st.subheader(f"Visão da Carteira: {st.session_state.current_portfolio}")
     if not st.session_state.assets:
-        st.info("Adicione ativos na barra lateral para visualizar o dashboard.")
+        st.info("Utilize o botão **➕ Novo Ativo** no topo para começar a montar sua carteira.")
     else:
         with st.spinner("Calculando carteira com preços ao vivo..."):
             try:
@@ -585,7 +478,7 @@ with tab2:
     st.header("Simulação de Cenários de Mercado")
 
     if not st.session_state.assets:
-        st.info("Adicione ativos na barra lateral para simular cenários.")
+        st.info("Adicione ativos no botão **➕ Novo Ativo** para simular cenários.")
     else:
         cenario_opcoes = {
             "Resultado Bolsa / Cripto": "bolsa_cripto",

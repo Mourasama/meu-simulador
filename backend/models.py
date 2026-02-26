@@ -211,7 +211,10 @@ class FixedIncomeAsset(Asset):
         hoje = datetime.now()
         dias_corridos = (hoje - self.purchase_date).days
         
-        # Data de compra formatada para a API
+        # Se comprou hoje, o valor bruto é exatamente o capital inicial
+        if dias_corridos <= 0:
+            return self.capital_inicial / self.quantity
+
         p_date_str = self.purchase_date.strftime("%Y-%m-%d")
 
         if self.type == 'CDI':
