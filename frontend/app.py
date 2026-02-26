@@ -59,19 +59,16 @@ st.markdown("""
     }
 
     /* Cores vibrantes para botões primários */
-    .stButton>button[kind="primary"] {
-        background-color: #2196F3;
-        color: white;
+    .stButton>button {
         border-radius: 8px;
-        border: none;
-        padding: 0.5rem 2rem;
-        font-weight: 600;
         transition: all 0.3s ease;
     }
     
-    .stButton>button[kind="primary"]:hover {
-        background-color: #1976D2;
-        box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+    /* Seletor para o botão do tipo 'primary' do Streamlit */
+    div[data-testid="stButton"] button[kind="primary"] {
+        background-color: #2196F3;
+        color: white;
+        border: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -126,7 +123,7 @@ def auth_dialog():
         with tab_login:
             email_login = st.text_input("E-mail", key="dl_email_login")
             pass_login = st.text_input("Senha", type="password", key="dl_pass_login")
-            if st.button("Entrar", key="dl_btn_login", kind="primary", use_container_width=True):
+            if st.button("Entrar", key="dl_btn_login", type="primary", use_container_width=True):
                 try:
                     resp = requests.post(f"{BACKEND_URL}/auth/login", json={"email": email_login, "password": pass_login}, timeout=5)
                     if resp.status_code == 200:
@@ -184,7 +181,7 @@ def add_asset_dialog():
         price = st.number_input("Preço de Compra (R$)", min_value=0.0, value=0.0)
         dt = st.date_input("Data Compra", value=date.today()).strftime("%Y-%m-%d")
         
-        if st.button("Adicionar", use_container_width=True, kind="primary"):
+        if st.button("Adicionar", use_container_width=True, type="primary"):
             if ticker:
                 novo_ativo = {"type":"stock", "ticker":ticker, "quantity":qty, "purchase_price":price, "purchase_date":dt}
 
@@ -204,7 +201,7 @@ def add_asset_dialog():
         qty = st.number_input("Quantidade", min_value=0.0001, value=0.1, format="%.4f")
         price = st.number_input("Preço de Compra (USD)", min_value=0.0, value=0.0)
         
-        if st.button("Adicionar", use_container_width=True, kind="primary"):
+        if st.button("Adicionar", use_container_width=True, type="primary"):
             if ticker:
                 if "/" not in ticker and len(ticker) < 6: ticker = f"{ticker.upper()}/USDT"
                 novo_ativo = {"type":"crypto", "ticker":ticker, "quantity":qty, "purchase_price":price}
@@ -217,7 +214,7 @@ def add_asset_dialog():
         dt = st.date_input("Data Compra", value=date.today()).strftime("%Y-%m-%d")
         mat = st.date_input("Vencimento", value=date(2029,1,1)).strftime("%Y-%m-%d")
         
-        if st.button("Adicionar", use_container_width=True, kind="primary"):
+        if st.button("Adicionar", use_container_width=True, type="primary"):
             if name:
                 novo_ativo = {
                     "type": "fixed_income", "ticker": name, "quantity": 1.0, 
@@ -246,7 +243,7 @@ def manage_dialog():
     if st.button("Limpar Todos os Ativos", use_container_width=True):
         clear_portfolio_logic()
         st.rerun()
-    if st.button("Apagar Esta Carteira", use_container_width=True, kind="secondary"):
+    if st.button("Apagar Esta Carteira", use_container_width=True, type="secondary"):
         delete_portfolio_logic()
         st.rerun()
 
