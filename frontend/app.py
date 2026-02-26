@@ -235,7 +235,7 @@ def manage_dialog():
         for i, a in enumerate(st.session_state.assets):
             col1, col2 = st.columns([4, 1])
             col1.write(f"**{a.get('ticker')}** | Qtd: {a.get('quantity')}")
-            if col2.button("🗑️", key=f"dl_del_{i}"):
+            if col2.button("Excluir", key=f"dl_del_{i}"):
                 remove_asset_logic(i, a)
                 st.rerun()
     
@@ -305,14 +305,14 @@ if st.session_state.assets is None:
 
 # --- Barra Lateral (Simplificada) ---
 with st.sidebar:
-    st.title("💰 Simulador")
+    st.title("Simulador")
     st.divider()
     st.markdown("""
     ### Sobre Mim
     **Enzo Moura de Souza**  
     *CPA-20 / C-PRO R*
     
-    [🔗 LinkedIn](https://www.linkedin.com/in/enzo-moura-de-souza-7751512a2)
+    [LinkedIn](https://www.linkedin.com/in/enzo-moura-de-souza-7751512a2)
     """)
     st.divider()
     if st.session_state.logged_in:
@@ -326,11 +326,11 @@ row1_col1, row1_col2 = st.columns([3, 1])
 with row1_col1:
     st.title("Simulador de Carteira")
     c1, c2, c3, c4 = st.columns(4)
-    if c1.button("➕ Novo Ativo", use_container_width=True):
+    if c1.button("Novo Ativo", use_container_width=True):
         add_asset_dialog()
-    if c2.button("⚙️ Gerenciar", use_container_width=True):
+    if c2.button("Gerenciar", use_container_width=True):
         manage_dialog()
-    if c3.button("👤 Conta", use_container_width=True):
+    if c3.button("Conta", use_container_width=True):
         auth_dialog()
     novo_p = st.text_input("", placeholder="Nova Carteira...", label_visibility="collapsed")
     if novo_p:
