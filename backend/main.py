@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Literal
+from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 # Adiciona a raiz do projeto ao sys.path para evitar problemas de importação
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,6 +13,14 @@ from backend.analytics import Portfolio, ScenarioSimulator
 from backend import database as db
 
 app = FastAPI(title="Simulador de Carteira Financeira")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Em produção, você pode restringir ao domínio do Streamlit
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Pydantic Models ---
 class AssetConfig(BaseModel):
