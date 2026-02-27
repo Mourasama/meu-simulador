@@ -15,12 +15,9 @@ from typing import List, Dict, Optional
 from functools import lru_cache
 import yfinance as yf
 
-# Padrão de ticker da B3: 4 letras + 1-2 dígitos (ex: PETR4, VALE3, BBAS3)
 _B3_PATTERN = re.compile(r'^[A-Z]{4}\d{1,2}$', re.IGNORECASE)
 
-# Cache simples para taxa Selic (evita chamadas repetidas à API do BCB)
 _selic_cache: Optional[float] = None
-
 
 def normalize_ticker(ticker: str) -> str:
     """
@@ -32,20 +29,16 @@ def normalize_ticker(ticker: str) -> str:
     if not ticker:
         return ticker
 
-    # Já tem sufixo de bolsa (.SA, .L, etc.)
     if '.' in ticker:
         return ticker
 
-    # É um par de crypto (contém /)
     if '/' in ticker:
         return ticker
 
-    # Padrão B3: 4 letras + 1-2 dígitos
     if _B3_PATTERN.match(ticker):
         return f"{ticker}.SA"
 
     return ticker
-
 
 @lru_cache(maxsize=128)
 def search_crypto_coingecko(query: str, max_results: int = 5) -> List[Dict[str, str]]:
@@ -79,7 +72,6 @@ def search_crypto_coingecko(query: str, max_results: int = 5) -> List[Dict[str, 
         print(f"Erro na busca de criptos CoinGecko: {e}")
     return []
 
-
 @lru_cache(maxsize=128)
 def search_tickers(query: str, max_results: int = 8) -> List[Dict[str, str]]:
     """
@@ -90,15 +82,13 @@ def search_tickers(query: str, max_results: int = 8) -> List[Dict[str, str]]:
         return []
 
     results = []
-    
-    # 1. Busca via CoinGecko (focado em Cripto)
+
     try:
         crypto_results = search_crypto_coingecko(query, max_results=max_results)
         results.extend(crypto_results)
     except Exception:
         pass
 
-    # 2. Busca via yfinance (Ações, ETFs, Cripto)
     try:
         if hasattr(yf, 'Search'):
             search = yf.Search(query, max_results=max_results)
@@ -109,7 +99,7 @@ def search_tickers(query: str, max_results: int = 8) -> List[Dict[str, str]]:
                 quote_type = q.get('quoteType', '')
 
                 if quote_type in ('EQUITY', 'ETF', 'CRYPTOCURRENCY'):
-                    # Evitar duplicatas (checa por símbolo)
+
                     if not any(r['symbol'] == symbol.upper().replace("-USD", "") for r in results):
                         results.append({
                             'symbol': symbol,
@@ -121,7 +111,6 @@ def search_tickers(query: str, max_results: int = 8) -> List[Dict[str, str]]:
         print(f"Erro na busca yfinance: {e}")
 
     return results[:max_results]
-
 
 def get_stock_price(ticker: str) -> float:
     """
@@ -138,7 +127,6 @@ def get_stock_price(ticker: str) -> float:
     except Exception as e:
         print(f"Erro ao buscar preço de {normalized}: {e}")
         return 0.0
-
 
 def get_selic_rate() -> float:
     """
@@ -158,17 +146,15 @@ def get_selic_rate() -> float:
         resp = http_requests.get(url, timeout=5)
         if resp.status_code == 200:
             data = resp.json()
-            # Série 11 retorna a TAXA DIÁRIA em % (ex: 0.055131)
+
             taxa_diaria_pct = float(data[0]['valor'].replace(',', '.'))
             taxa_diaria = taxa_diaria_pct / 100.0
-            
-            # Anualização padrão (base 252 dias úteis)
+
             _selic_cache = (1 + taxa_diaria) ** 252 - 1
             return _selic_cache
     except Exception as e:
         print(f"Erro ao buscar taxa Selic: {e}")
     return 0.1275
-
 
 def get_ipca_rate() -> float:
     """
@@ -181,7 +167,7 @@ def get_ipca_rate() -> float:
         resp = http_requests.get(url, timeout=5)
         if resp.status_code == 200:
             data = resp.json()
-            # Acumular 12 meses
+
             acumulado = 1.0
             for item in data:
                 taxa_mensal = float(item['valor'].replace(',', '.')) / 100.0
@@ -190,21 +176,19 @@ def get_ipca_rate() -> float:
     except Exception as e:
         print(f"Erro ao buscar IPCA: {e}")
 
-    # Fallback: IPCA aproximado
     return 0.0480
-
 
 def get_cumulative_factor(serie_id: int, start_date: str) -> float:
     """
     Calcula o fator de capitalização acumulado de uma série do SGS BCB
     desde start_date (YYYY-MM-DD) até a data mais recente disponível.
-    
+
     serie_id 11 = Selic diária (%)
     serie_id 12 = CDI diária (%)
     serie_id 433 = IPCA mensal (%)
     """
     try:
-        # Formata data para o padrão BCB: dd/mm/aaaa
+
         dt_start = start_date.split('-')
         if len(dt_start) == 3:
             formatted_start = f"{dt_start[2]}/{dt_start[1]}/{dt_start[0]}"
@@ -213,10 +197,10 @@ def get_cumulative_factor(serie_id: int, start_date: str) -> float:
 
         import datetime
         hoje = datetime.date.today().strftime("%d/%m/%Y")
-        
+
         url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie_id}/dados?formato=json&dataInicial={formatted_start}&dataFinal={hoje}"
         resp = http_requests.get(url, timeout=15)
-        
+
         if resp.status_code == 200:
             data = resp.json()
             factor = 1.0
@@ -226,9 +210,8 @@ def get_cumulative_factor(serie_id: int, start_date: str) -> float:
             return factor
     except Exception as e:
         print(f"Erro ao calcular fator acumulativo da série {serie_id}: {e}")
-    
-    return 1.0  # Fallback: sem rendimento se falhar
 
+    return 1.0
 
 def get_crypto_price_coingecko(ticker: str) -> float:
     """
@@ -241,17 +224,13 @@ def get_crypto_price_coingecko(ticker: str) -> float:
         'LINK': 'chainlink', 'MATIC': 'polygon', 'DOGE': 'dogecoin',
     }
 
-    # Limpa o ticker
     clean_ticker = ticker.split('/')[0].upper()
-    
-    # Prioridade 1: Mapeamento manual
+
     cg_id = id_map.get(clean_ticker)
-    
-    # Prioridade 2: Se o ticker já parece um ID do CG (minúsculo e longo)
+
     if not cg_id and ticker.islower() and len(ticker) > 3:
         cg_id = ticker
 
-    # Prioridade 3: Fallback por busca rápida (se for símbolo desconhecido)
     if not cg_id:
         try:
             search_res = search_crypto_coingecko(clean_ticker, max_results=1)
@@ -273,9 +252,8 @@ def get_crypto_price_coingecko(ticker: str) -> float:
     except Exception as e:
         print(f"Erro ao buscar preço de {ticker} (ID: {cg_id}) no CoinGecko: {e}")
 
-    # Fallback 4: yfinance (se CoinGecko falhar/estiver fora)
     try:
-        # Mapeamento reverso para caso o usuário tenha digitado o nome em vez do símbolo
+
         name_to_symbol = {
             'BITCOIN': 'BTC', 'ETHEREUM': 'ETH', 'SOLANA': 'SOL', 'BINANCECOIN': 'BNB',
             'RIPPLE': 'XRP', 'CARDANO': 'ADA', 'AVALANCHE': 'AVAX', 'POLKADOT': 'DOT',
@@ -291,7 +269,6 @@ def get_crypto_price_coingecko(ticker: str) -> float:
         pass
 
     return 0.0
-
 
 def clear_selic_cache():
     """Limpa o cache da taxa Selic (útil para testes)."""

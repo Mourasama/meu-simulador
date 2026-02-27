@@ -5,22 +5,20 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import date, timedelta
 
-# --- Config ---
 try:
     BACKEND_URL = st.secrets["BACKEND_URL"]
 except Exception:
     BACKEND_URL = "http://localhost:8000"
 st.set_page_config(page_title="Simulador de Carteira", layout="wide")
 
-# --- Premium CSS ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
-    
+
     html, body, [class*="css"] {
         font-family: 'Outfit', sans-serif;
     }
-    
+
     .stMetric {
         background: rgba(255, 255, 255, 0.05);
         border-radius: 12px;
@@ -29,25 +27,25 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         transition: transform 0.3s ease;
     }
-    
+
     .stMetric:hover {
         transform: translateY(-5px);
         border-color: #2196F3;
     }
-    
+
     .main .block-container {
         padding-top: 2rem;
     }
-    
+
     h1, h2, h3 {
         font-weight: 700 !important;
         letter-spacing: -0.5px;
     }
-    
+
     .stTabs [data-baseweb="tab-list"] {
         gap: 24px;
     }
-    
+
     .stTabs [data-baseweb="tab"] {
         height: 50px;
         white-space: pre-wrap;
@@ -63,7 +61,7 @@ st.markdown("""
         border-radius: 8px;
         transition: all 0.3s ease;
     }
-    
+
     /* Seletor para o botão do tipo 'primary' do Streamlit */
     div[data-testid="stButton"] button[kind="primary"] {
         background-color: #2196F3;
@@ -73,7 +71,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Helpers ---
 def fmt_brl(value: float) -> str:
     """Formata valor no padrão brasileiro: R$ 1.234,56"""
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -99,7 +96,6 @@ def search_tickers(query: str):
         pass
     return []
 
-# --- Gerenciamento de Autenticação ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_email = None
@@ -113,8 +109,6 @@ if 'current_portfolio' not in st.session_state:
 if 'assets' not in st.session_state:
     st.session_state.assets = []
     st.session_state.db_ids = []
-
-# --- Diálogos (Pop-ups) ---
 
 @st.dialog("Login / Conta")
 def auth_dialog():
@@ -162,7 +156,7 @@ def add_asset_dialog():
     tipo_opcoes = {"Ação": "stock", "Cripto": "crypto", "Renda Fixa": "fixed_income"}
     asset_type = st.selectbox("Tipo de Ativo", list(tipo_opcoes.keys()))
     type_key = tipo_opcoes[asset_type]
-    
+
     novo_ativo = None
 
     if type_key == "stock":
@@ -176,11 +170,11 @@ def add_asset_dialog():
                 ticker = opcoes[sel]
             else:
                 ticker = query.upper()
-        
+
         qty = st.number_input("Quantidade", min_value=0.01, value=1.0)
         price = st.number_input("Preço de Compra (R$)", min_value=0.0, value=0.0)
         dt = st.date_input("Data Compra", value=date.today()).strftime("%Y-%m-%d")
-        
+
         if st.button("Adicionar", use_container_width=True, type="primary"):
             if ticker:
                 novo_ativo = {"type":"stock", "ticker":ticker, "quantity":qty, "purchase_price":price, "purchase_date":dt}
@@ -197,10 +191,10 @@ def add_asset_dialog():
                 ticker = opcoes[sel].get('id') or opcoes[sel].get('symbol')
             else:
                 ticker = query.upper()
-        
+
         qty = st.number_input("Quantidade", min_value=0.0001, value=0.1, format="%.4f")
         price = st.number_input("Preço de Compra (USD)", min_value=0.0, value=0.0)
-        
+
         if st.button("Adicionar", use_container_width=True, type="primary"):
             if ticker:
                 if "/" not in ticker and len(ticker) < 6: ticker = f"{ticker.upper()}/USDT"
@@ -213,11 +207,11 @@ def add_asset_dialog():
         cap = st.number_input("Capital Inicial", min_value=0.0, value=1000.0)
         dt = st.date_input("Data Compra", value=date.today()).strftime("%Y-%m-%d")
         mat = st.date_input("Vencimento", value=date(2029,1,1)).strftime("%Y-%m-%d")
-        
+
         if st.button("Adicionar", use_container_width=True, type="primary"):
             if name:
                 novo_ativo = {
-                    "type": "fixed_income", "ticker": name, "quantity": 1.0, 
+                    "type": "fixed_income", "ticker": name, "quantity": 1.0,
                     "purchase_price": cap, "purchase_date": dt,
                     "fixed_income_rate": rate, "fixed_income_maturity": mat, "fixed_income_type": subtipo
                 }
@@ -238,7 +232,7 @@ def manage_dialog():
             if col2.button("Excluir", key=f"dl_del_{i}"):
                 remove_asset_logic(i, a)
                 st.rerun()
-    
+
     st.divider()
     if st.button("Limpar Todos os Ativos", use_container_width=True):
         clear_portfolio_logic()
@@ -246,8 +240,6 @@ def manage_dialog():
     if st.button("Apagar Esta Carteira", use_container_width=True, type="secondary"):
         delete_portfolio_logic()
         st.rerun()
-
-# --- Lógica de Persistência (Refatorada) ---
 
 def process_new_asset(novo_ativo):
     try:
@@ -283,7 +275,6 @@ def delete_portfolio_logic():
     st.session_state.current_portfolio = st.session_state.portfolios[0] if st.session_state.portfolios else "Principal"
     st.session_state.assets = None
 
-# --- Carregamento de Dados ---
 if st.session_state.logged_in and ('portfolios' not in st.session_state or len(st.session_state.portfolios) <= 1):
     try:
         resp = requests.get(f"{BACKEND_URL}/db/portfolios", params={"user_email": st.session_state.user_email}, timeout=3)
@@ -303,15 +294,14 @@ if st.session_state.assets is None:
     else:
         st.session_state.assets = []
 
-# --- Barra Lateral (Simplificada) ---
 with st.sidebar:
     st.title("Simulador")
     st.divider()
     st.markdown("""
     ### Sobre Mim
-    **Enzo Moura de Souza**  
+    **Enzo Moura de Souza**
     *CPA-20 / C-PRO R*
-    
+
     [LinkedIn](https://www.linkedin.com/in/enzo-moura-de-souza-7751512a2)
     """)
     st.divider()
@@ -320,7 +310,6 @@ with st.sidebar:
     else:
         st.info("Modo Teste (dados não salvos)")
 
-# --- Cabeçalho Principal (Botões e Seleção) ---
 row1_col1, row1_col2 = st.columns([3, 1])
 
 with row1_col1:
@@ -341,11 +330,11 @@ with row1_col1:
             st.rerun()
 
 with row1_col2:
-    st.write("") # Espaçamento
+    st.write("")
     st.write("")
     selected_portfolio = st.selectbox(
-        "Carteira Ativa", 
-        st.session_state.portfolios, 
+        "Carteira Ativa",
+        st.session_state.portfolios,
         index=st.session_state.portfolios.index(st.session_state.current_portfolio) if st.session_state.current_portfolio in st.session_state.portfolios else 0
     )
     if selected_portfolio != st.session_state.current_portfolio:
@@ -353,10 +342,8 @@ with row1_col2:
         st.session_state.assets = None
         st.rerun()
 
-# Tabs
 tab1, tab2, tab4 = st.tabs(["Dashboard", "Simulação de Cenários", "Comparar Carteiras"])
 
-# ===================== TAB 1: DASHBOARD =====================
 with tab1:
     st.subheader(f"Visão da Carteira: {st.session_state.current_portfolio}")
     if not st.session_state.assets:
@@ -373,14 +360,12 @@ with tab1:
                     allocation = data.get("allocation", {})
                     positions = data.get("positions", [])
 
-                    # --- Métricas de Topo ---
-                    # Valor investido: para RF é purchase_price (capital inicial), para outros é purchase_price × qty
                     total_compra = 0.0
                     for a in st.session_state.assets:
                         pp = a.get("purchase_price", 0) or 0
                         qty = a.get("quantity", 0) or 0
                         if a.get("type") == "fixed_income":
-                            total_compra += pp  # purchase_price já é o capital total (qty=1)
+                            total_compra += pp
                         else:
                             total_compra += pp * qty
 
@@ -399,7 +384,6 @@ with tab1:
 
                     st.divider()
 
-                    # --- Tabela de Posições ---
                     if positions:
                         st.subheader("Posições Detalhadas")
                         df_pos = pd.DataFrame(positions)
@@ -416,7 +400,6 @@ with tab1:
                         })
                         st.dataframe(df_display, use_container_width=True, hide_index=True)
 
-                    # --- Gráfico de Alocação por Market Value ---
                     if allocation:
                         st.subheader("Alocação Real da Carteira (por Market Value)")
                         st.caption(
@@ -424,11 +407,10 @@ with tab1:
                             "(Quantidade × Preço Atual) de cada ativo."
                         )
 
-                        # Agrupar por classe de ativo para visão macro
                         col_pie1, col_pie2 = st.columns(2)
 
                         with col_pie1:
-                            # Pizza por ativo individual
+
                             fig_pie = px.pie(
                                 names=list(allocation.keys()),
                                 values=list(allocation.values()),
@@ -439,7 +421,7 @@ with tab1:
                             st.plotly_chart(fig_pie, use_container_width=True)
 
                         with col_pie2:
-                            # Pizza por classe de ativo
+
                             if positions:
                                 tipo_map = {"Stock": "Ação", "Crypto": "Cripto",
                                             "FixedIncome": "Renda Fixa"}
@@ -470,7 +452,6 @@ with tab1:
             except Exception as e:
                 st.error(f"Erro inesperado: {e}")
 
-# ===================== TAB 2: SIMULAÇÃO =====================
 with tab2:
     st.header("Simulação de Cenários de Mercado")
 
@@ -501,7 +482,7 @@ with tab2:
                 st.info(
                     "**Resultado Renda Fixa (Juros):** Aplica a variação percentual no valor de mercado dos títulos de Renda Fixa."
                 )
-            
+
             magnitude = st.number_input(
                 "Variação Percentual Desejada (ex: 0.10 = +10%, -0.20 = -20%)",
                 value=0.00, step=0.01, format="%.2f"
@@ -560,13 +541,12 @@ with tab2:
                 except Exception as e:
                     st.error(f"Falha na simulação: {e}")
 
-# ===================== TAB 4: COMPARAR CARTEIRAS =====================
 with tab4:
     st.header("Comparação Simultânea de Carteiras")
     st.caption("Selecione quais carteiras você deseja comparar.")
 
     todas_carteiras = st.session_state.portfolios
-    
+
     carteiras_para_comparar = st.multiselect(
         "Selecione as carteiras",
         todas_carteiras,
@@ -582,12 +562,12 @@ with tab4:
                 alocacoes = []
 
                 for cart_name in carteiras_para_comparar:
-                    # 1. Obter os ativos da carteira no DB
+
                     try:
                         resp_db = requests.get(f"{BACKEND_URL}/db/portfolio", params={"name": cart_name}, timeout=5)
                         if resp_db.status_code == 200:
                             cart_assets = resp_db.json()
-                            
+
                             if not cart_assets:
                                 comparativo.append({
                                     "Carteira": cart_name,
@@ -597,21 +577,19 @@ with tab4:
                                     "Rentabilidade": 0.0
                                 })
                                 continue
-                            
-                            # 2. Calcular carteira
+
                             resp_calc = requests.post(
-                                f"{BACKEND_URL}/portfolio/calculate", 
-                                json={"assets": cart_assets}, 
+                                f"{BACKEND_URL}/portfolio/calculate",
+                                json={"assets": cart_assets},
                                 timeout=30
                             )
-                            
+
                             if resp_calc.status_code == 200:
                                 data = resp_calc.json()
                                 total_val = data.get("total_value", 0)
                                 positions = data.get("positions", [])
                                 allocation = data.get("allocation", {})
-                                
-                                # Calcular capital investido
+
                                 total_compra = 0.0
                                 for a in cart_assets:
                                     pp = a.get("purchase_price", 0) or 0
@@ -620,10 +598,10 @@ with tab4:
                                         total_compra += pp
                                     else:
                                         total_compra += pp * qty
-                                        
+
                                 total_pnl = total_val - total_compra
                                 rentabilidade = (total_pnl / total_compra * 100) if total_compra > 0 else 0
-                                
+
                                 comparativo.append({
                                     "Carteira": cart_name,
                                     "Valor Total": total_val,
@@ -631,15 +609,14 @@ with tab4:
                                     "Lucro/Prejuízo": total_pnl,
                                     "Rentabilidade (%)": rentabilidade
                                 })
-                                
-                                # Processar alocações por classe
+
                                 tipo_map = {"Stock": "Ação", "Crypto": "Cripto",
                                             "FixedIncome": "Renda Fixa", "Option": "Opção"}
                                 classe_vals: dict = {}
                                 for p in positions:
                                     classe = tipo_map.get(p["tipo"], p["tipo"])
                                     classe_vals[classe] = classe_vals.get(classe, 0) + p["valor_atual"]
-                                    
+
                                 for classe, valor in classe_vals.items():
                                     alocacoes.append({
                                         "Carteira": cart_name,
@@ -652,41 +629,37 @@ with tab4:
                              st.error(f"Erro ao buscar a carteira {cart_name} do banco de dados.")
                     except Exception as e:
                         st.error(f"Erro de conexão na carteira {cart_name}: {e}")
-                
-                # Exibir as tabelas e gráficos apenas se tivemos sucesso em processar os dados
+
                 if comparativo:
-                    # 1. Tabela de Resumo Financeiro
+
                     df_comp = pd.DataFrame(comparativo)
-                    
+
                     st.subheader("Resumo Financeiro")
-                    
-                    # Criar colunas baseadas na quantidade de carteiras selecionadas (max 4 na mesma linha)
+
                     cols = st.columns(min(len(df_comp), 4))
                     for i, row in df_comp.iterrows():
                         with cols[i % len(cols)]:
                             st.write(f"### {row['Carteira']}")
                             st.metric("Total", fmt_brl(row['Valor Total']), fmt_pct(row['Rentabilidade (%)']))
                             st.caption(f"Investido: {fmt_brl(row['Capital Investido'])}")
-                            
+
                     st.divider()
 
-                    # 2. Gráfico de Comparativo de Patrimônio
                     st.subheader("Comparativo de Patrimônio")
-                    
-                    df_melted = df_comp.melt(id_vars=["Carteira"], value_vars=["Valor Total", "Capital Investido"], 
+
+                    df_melted = df_comp.melt(id_vars=["Carteira"], value_vars=["Valor Total", "Capital Investido"],
                                            var_name="Métrica", value_name="Valor (R$)")
-                    
+
                     fig_bars = px.bar(df_melted, x="Carteira", y="Valor (R$)", color="Métrica", barmode="group",
                                      title="Valor Total vs Capital Investido",
                                      color_discrete_map={"Valor Total": "#2196F3", "Capital Investido": "#9E9E9E"})
                     st.plotly_chart(fig_bars, use_container_width=True)
-                    
-                    # 3. Gráfico de Alocação
+
                     if alocacoes:
                         st.divider()
                         st.subheader("Alocação por Classe de Ativo")
                         df_aloc = pd.DataFrame(alocacoes)
-                        
+
                         fig_aloc = px.bar(df_aloc, x="Carteira", y="Valor", color="Classe", barmode="stack",
                                          title="Composição das Carteiras",
                                          color_discrete_map={

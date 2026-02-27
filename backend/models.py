@@ -8,13 +8,12 @@ import ccxt.async_support as ccxt
 from scipy.stats import norm
 from backend.data_fetcher import normalize_ticker, get_selic_rate, get_ipca_rate, get_crypto_price_coingecko
 
-
 class Asset(ABC):
     def __init__(self, ticker: str, name: str, quantity: float = 1.0, purchase_price: float = 0.0):
         self.ticker = ticker
         self.name = name
         self.quantity = quantity
-        self.purchase_price = purchase_price  # Preço unitário de compra (ou capital inicial para RF)
+        self.purchase_price = purchase_price
 
     @abstractmethod
     async def get_price(self) -> float:
@@ -38,10 +37,9 @@ class Asset(ABC):
     def get_position_value(self, price: float) -> float:
         return price * self.quantity
 
-
 class StockAsset(Asset):
     def __init__(self, ticker: str, name: str, quantity: float = 1.0, purchase_price: float = 0.0):
-        # Normaliza o ticker automaticamente (adiciona .SA para B3)
+
         normalized = normalize_ticker(ticker)
         super().__init__(normalized, name or normalized, quantity, purchase_price)
         self._ticker_obj = yf.Ticker(self.ticker)
@@ -80,13 +78,12 @@ class StockAsset(Asset):
         vol = float(returns.std() * np.sqrt(252))
         return {"volatilidade": vol}
 
-
 class CryptoAsset(Asset):
     def __init__(self, ticker: str, name: str, quantity: float = 1.0,
                  purchase_price: float = 0.0, exchange_id: str = 'binance'):
-        # ticker pode ser um ID (ex: bitcoin) ou Símbolo (ex: BTC)
+
         super().__init__(ticker, name, quantity, purchase_price)
-        self.raw_identifier = ticker # Mantém o ID do CoinGecko se vier de lá
+        self.raw_identifier = ticker
         self.exchange_id = exchange_id
         self.exchange = getattr(ccxt, exchange_id)()
 
@@ -95,7 +92,7 @@ class CryptoAsset(Asset):
         loop = asyncio.get_event_loop()
         price = 0.0
         try:
-            # Tenta buscar pelo ID/Símbolo no CoinGecko
+
             price = await loop.run_in_executor(
                 None, get_crypto_price_coingecko, self.raw_identifier
             )
@@ -104,15 +101,13 @@ class CryptoAsset(Asset):
 
         if price > 0:
             return price
-        
-        # Fallback para ccxt ou yfinance
+
         try:
-            # Aqui precisamos do Símbolo. Se self.raw_identifier for o nome longo,
-            # o ccxt vai falhar. Na busca do frontend, nós passamos o símbolo no ticker.
+
             symbol = self.raw_identifier.upper()
             if "/" not in symbol:
                 symbol = f"{symbol}/USDT"
-                
+
             ticker_data = await self.exchange.fetch_ticker(symbol)
             return float(ticker_data['last'])
         except Exception:
@@ -142,7 +137,6 @@ class CryptoAsset(Asset):
             return {"volatilidade": 0.0}
         finally:
             await self.exchange.close()
-
 
 class FixedIncomeAsset(Asset):
     """
@@ -181,15 +175,13 @@ class FixedIncomeAsset(Asset):
         self.type = type
         self.current_market_rate = current_market_rate if current_market_rate else rate
 
-        # Capital inicial: preferência para capital_inicial, senão purchase_price * quantity
         if capital_inicial and capital_inicial > 0:
             self.capital_inicial = capital_inicial
         elif purchase_price > 0:
             self.capital_inicial = purchase_price * quantity
         else:
-            self.capital_inicial = 1000.0 * quantity  # fallback
+            self.capital_inicial = 1000.0 * quantity
 
-        # Data de compra para cálculo pro-rata
         if purchase_date:
             try:
                 self.purchase_date = datetime.strptime(purchase_date, "%Y-%m-%d")
@@ -210,26 +202,24 @@ class FixedIncomeAsset(Asset):
         """
         hoje = datetime.now()
         dias_corridos = (hoje - self.purchase_date).days
-        
-        # Se comprou hoje, o valor bruto é exatamente o capital inicial
+
         if dias_corridos <= 0:
             return self.capital_inicial / self.quantity
 
         p_date_str = self.purchase_date.strftime("%Y-%m-%d")
 
         if self.type == 'CDI':
-            # Fator acumulado do CDI (série 12) desde a compra
+
             from backend.data_fetcher import get_cumulative_factor
             import asyncio
             loop = asyncio.get_event_loop()
             factor = await loop.run_in_executor(None, get_cumulative_factor, 12, p_date_str)
-            
-            # Se o usuário contratou 110% do CDI, o rendimento é (fa - 1) * 1.1 + 1
+
             rendimento_bruto = (factor - 1) * self.rate
             valor_gross = self.capital_inicial * (1 + rendimento_bruto)
 
         elif self.type == 'PRE':
-            # Base 252 dias úteis (aproximadamente 21 dias úteis por mês)
+
             dias_uteis = int(dias_corridos * (252/365))
             valor_gross = self.capital_inicial * ((1 + self.rate) ** (dias_uteis / 252))
 
@@ -237,27 +227,25 @@ class FixedIncomeAsset(Asset):
             from backend.data_fetcher import get_cumulative_factor
             import asyncio
             loop = asyncio.get_event_loop()
-            
+
             fator_ipca = await loop.run_in_executor(None, get_cumulative_factor, 433, p_date_str)
             dias_uteis = int(dias_corridos * (252/365))
             fator_juros = (1 + self.rate) ** (dias_uteis / 252)
-            
+
             valor_gross = self.capital_inicial * fator_ipca * fator_juros
         else:
             valor_gross = self.capital_inicial
 
-        # --- Cálculo de Impostos (IR e IOF) ---
         profit = valor_gross - self.capital_inicial
         if profit > 0:
-            # IOF (apenas se < 30 dias)
+
             iof_rate = self._get_iof_rate(dias_corridos)
             iof_tax = profit * iof_rate
             remaining_profit = profit - iof_tax
-            
-            # IR regressivo sobre o que sobrou após IOF
+
             ir_rate = self._get_ir_rate(dias_corridos)
             ir_tax = remaining_profit * ir_rate
-            
+
             valor_net = valor_gross - iof_tax - ir_tax
         else:
             valor_net = valor_gross
@@ -279,8 +267,7 @@ class FixedIncomeAsset(Asset):
         """Tabela regressiva de IOF para os primeiros 30 dias."""
         if days >= 30:
             return 0.0
-        
-        # Tabela simplificada de IOF (aproximada, regressiva de 96% a 3%)
+
         iof_table = [
             0.96, 0.93, 0.90, 0.86, 0.83, 0.80, 0.76, 0.73, 0.70, 0.66,
             0.63, 0.60, 0.56, 0.53, 0.50, 0.46, 0.43, 0.40, 0.36, 0.33,
@@ -302,7 +289,6 @@ class FixedIncomeAsset(Asset):
         dias = (self.maturity - hoje).days
         anos = max(0, dias) / 252
         return {"duration": anos, "volatilidade": 0.02}
-
 
 class OptionAsset(Asset):
     def __init__(self, ticker: str, underlying_price: float, strike: float,

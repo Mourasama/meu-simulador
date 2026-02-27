@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional, Literal
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
-# Adiciona a raiz do projeto ao sys.path para evitar problemas de importação
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.models import StockAsset, CryptoAsset, FixedIncomeAsset
@@ -16,23 +16,22 @@ app = FastAPI(title="Simulador de Carteira Financeira")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, você pode restringir ao domínio do Streamlit
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Pydantic Models ---
 class AssetConfig(BaseModel):
     type: Literal['stock', 'crypto', 'fixed_income']
     ticker: str
     quantity: float
     purchase_price: Optional[float] = 0.0
-    purchase_date: Optional[str] = None  # YYYY-MM-DD — usado para calculo pro-rata de RF
+    purchase_date: Optional[str] = None
 
     fixed_income_rate: Optional[float] = 0.0
     fixed_income_maturity: Optional[str] = None
-    fixed_income_type: Optional[str] = None  # 'PRE', 'CDI', 'IPCA+'
+    fixed_income_type: Optional[str] = None
 
 class PortfolioRequest(BaseModel):
     assets: List[AssetConfig]
@@ -51,7 +50,6 @@ class AuthRequest(BaseModel):
     email: str
     password: str
 
-# --- Helper Factory ---
 def create_asset_from_config(config: AssetConfig):
     if config.type == 'stock':
         return StockAsset(
@@ -68,7 +66,7 @@ def create_asset_from_config(config: AssetConfig):
             purchase_price=config.purchase_price or 0.0,
         )
     elif config.type == 'fixed_income':
-        # capital_inicial = preco_compra * quantidade (valor total investido)
+
         capital = (config.purchase_price or 0.0) * config.quantity
         return FixedIncomeAsset(
             name=config.ticker,
@@ -78,11 +76,9 @@ def create_asset_from_config(config: AssetConfig):
             type=config.fixed_income_type or 'CDI',
             purchase_price=config.purchase_price or 0.0,
             capital_inicial=capital if capital > 0 else None,
-            purchase_date=config.purchase_date,  # pro-rata desde data de compra
+            purchase_date=config.purchase_date,
         )
     raise ValueError("Tipo de ativo invalido")
-
-# --- Endpoints ---
 
 @app.get("/tickers/search")
 def search_tickers_endpoint(q: str, max_results: int = 8):
@@ -126,8 +122,6 @@ async def simulate_portfolio(request: ScenarioRequest):
         portfolio, request.shock_factor, request.shock_magnitude
     )
     return {"simulated_value": sim_value}
-
-# --- Persistence Endpoints ---
 
 @app.post("/auth/register")
 def register_user(request: AuthRequest):

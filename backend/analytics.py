@@ -70,7 +70,6 @@ class Portfolio:
                 })
         return positions
 
-
 class ScenarioSimulator:
     @staticmethod
     async def simulate_scenario(portfolio: Portfolio, shock_factor: str, shock_magnitude: float) -> float:
@@ -88,7 +87,7 @@ class ScenarioSimulator:
                 price = 0.0
 
             if shock_factor == 'dolar':
-                # Crypto e ETFs internacionais são correlacionados ao USD
+
                 if isinstance(asset, CryptoAsset):
                     price *= (1 + shock_magnitude)
                 elif isinstance(asset, StockAsset) and any(t in asset.ticker for t in ['IVVB', 'BOVA', 'SPY', 'QQQ']):
@@ -102,7 +101,7 @@ class ScenarioSimulator:
                 if isinstance(asset, StockAsset) or isinstance(asset, CryptoAsset):
                     price *= (1 + shock_magnitude)
                 elif isinstance(asset, OptionAsset):
-                    # Opções de venda (put) se valorizam inversamente; calls acompanham
+
                     if asset.type == 'put':
                         price *= (1 - shock_magnitude)
                     else:
@@ -112,9 +111,8 @@ class ScenarioSimulator:
 
         return new_total_value
 
-
 class StrategyAnalytics:
-    # Descrições amigáveis de cada estratégia
+
     DESCRIPTIONS = {
         "trava_de_alta": (
             "**Trava de Alta (Bull Call Spread):** Compra uma Call com strike mais baixo (K1) e vende "

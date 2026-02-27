@@ -5,7 +5,6 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import os
 
-# Store DB next to this file so it persists across runs
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "portfolio.db")
 
 def _get_conn():
@@ -19,8 +18,7 @@ def hash_password(password: str) -> str:
 def init_db():
     conn = _get_conn()
     cursor = conn.cursor()
-    
-    # Criar tabela de usuários
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +26,7 @@ def init_db():
             password_hash TEXT NOT NULL
         )
     ''')
-    
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS portfolio (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +40,7 @@ def init_db():
             extra_params TEXT
         )
     ''')
-    # Check if we need to migrate existing DB to add columns
+
     cursor.execute("PRAGMA table_info(portfolio)")
     columns = [col['name'] for col in cursor.fetchall()]
     if 'portfolio_name' not in columns:
@@ -104,15 +102,15 @@ def add_asset(asset_data: Dict[str, Any], user_email: Optional[str] = None):
 def get_portfolios(user_email: Optional[str] = None) -> List[str]:
     conn = _get_conn()
     cursor = conn.cursor()
-    
+
     if user_email:
         cursor.execute('SELECT DISTINCT portfolio_name FROM portfolio WHERE user_email = ? ORDER BY portfolio_name', (user_email,))
     else:
         cursor.execute('SELECT DISTINCT portfolio_name FROM portfolio WHERE user_email IS NULL ORDER BY portfolio_name')
-        
+
     rows = cursor.fetchall()
     conn.close()
-    
+
     portfs = [row['portfolio_name'] for row in rows]
     if 'Principal' not in portfs:
         portfs.insert(0, 'Principal')
@@ -121,12 +119,12 @@ def get_portfolios(user_email: Optional[str] = None) -> List[str]:
 def get_portfolio(portfolio_name: str = 'Principal', user_email: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = _get_conn()
     cursor = conn.cursor()
-    
+
     if user_email:
         cursor.execute('SELECT * FROM portfolio WHERE portfolio_name = ? AND user_email = ? ORDER BY id', (portfolio_name, user_email))
     else:
         cursor.execute('SELECT * FROM portfolio WHERE portfolio_name = ? AND user_email IS NULL ORDER BY id', (portfolio_name,))
-        
+
     rows = cursor.fetchall()
     conn.close()
 
@@ -143,26 +141,25 @@ def get_portfolio(portfolio_name: str = 'Principal', user_email: Optional[str] =
 def remove_asset(asset_id: int, user_email: Optional[str] = None):
     conn = _get_conn()
     cursor = conn.cursor()
-    
+
     if user_email:
         cursor.execute('DELETE FROM portfolio WHERE id = ? AND user_email = ?', (asset_id, user_email))
     else:
         cursor.execute('DELETE FROM portfolio WHERE id = ? AND user_email IS NULL', (asset_id,))
-        
+
     conn.commit()
     conn.close()
 
 def clear_portfolio(portfolio_name: str = 'Principal', user_email: Optional[str] = None):
     conn = _get_conn()
     cursor = conn.cursor()
-    
+
     if user_email:
         cursor.execute('DELETE FROM portfolio WHERE portfolio_name = ? AND user_email = ?', (portfolio_name, user_email))
     else:
         cursor.execute('DELETE FROM portfolio WHERE portfolio_name = ? AND user_email IS NULL', (portfolio_name,))
-        
+
     conn.commit()
     conn.close()
 
-# Initialize DB on import
 init_db()
