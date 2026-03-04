@@ -347,7 +347,7 @@ tab1, tab2, tab4 = st.tabs(["Dashboard", "Simulação de Cenários", "Comparar C
 with tab1:
     st.subheader(f"Visão da Carteira: {st.session_state.current_portfolio}")
     if not st.session_state.assets:
-        st.info("Utilize o botão **➕ Novo Ativo** no topo para começar a montar sua carteira.")
+        st.info("Utilize o botão ** Novo Ativo** no topo para começar a montar sua carteira.")
     else:
         with st.spinner("Calculando carteira com preços ao vivo..."):
             try:
